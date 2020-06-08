@@ -3,16 +3,18 @@ import numpy as np
 import matplotlib.pyplot as plt
 import PIL
 import cv2
+from tqdm import tqdm
 
 # Set options like file name,...
-file_name = "FridaKahlo"
-number_pixpics = 2000
-max_im = 2378
-resolution_factor = 2
+file_name = "FridaKahlo"  # Filename of the bigpicture
+NUMBER_PIXPICS = 2000     # Amount of small images that will be used to create the big picture
+MAX_IM = 10               # Maximum amount of images that will be iterated over to try and recreate the bigpicture
+RESOLUTION_FACTOR = 2     # The upscaling factor to increase the size of the final image 
+MOST_USED_THRESHOLD = 0.12 # Determines a treshold to show the most used images
 
 # Set file locations
 parentdir = "D://DocumentenDschijf//3de bach//PicturestoCollage//"
-main_pic_dir = parentdir + "BigPictures//" + file_name + ".jpg"
+main_pic_dir = parentdir + "BigPictures//" + file_name + ".jpg"     #TODO: zie tutorial manu 
 pixel_pics_dir = parentdir + "PixelPictures5//"
 save_dir = parentdir + "Finished//"
 
@@ -21,16 +23,16 @@ MainPicture = plt.imread(main_pic_dir)
 height1, width1 = len(MainPicture), len(MainPicture[0])
 
 # Determine size of pixel pictures
-dim_pix = int(np.sqrt((height1*width1)/number_pixpics))
+dim_pix = int(np.sqrt((height1*width1)/NUMBER_PIXPICS))
 amount_height = height1//dim_pix
 amount_widht = width1//dim_pix
 
 # Resize the main picture to fit perfect squares of dim_pix init
 diff_height = height1-dim_pix*amount_height
 diff_width = width1-dim_pix*amount_widht
-MainPicture = MainPicture[diff_height//2:dim_pix*amount_height+diff_height//2,diff_width//2 :dim_pix*amount_widht+diff_width//2]
+MainPicture = MainPicture[diff_height//2:dim_pix*amount_height+diff_height//2, diff_width//2 :dim_pix*amount_widht+diff_width//2] #TODO: kortere lijn door op volgende 'lijn' te zetten
 
-# create 'empty' image for recontstruction
+# Create 'empty' image for recontstruction
 reconstructed = []
 
 for h in range(amount_height*dim_pix):
@@ -39,7 +41,7 @@ for h in range(amount_height*dim_pix):
         list.append([np.uint8(0), np.uint8(0), np.uint8(0)])
     reconstructed.append(list)
 
-reconstructed = np.array(reconstructed)
+reconstructed = np.array(reconstructed) #TODO: dubbel werk maar het gwn direct aan als np array en gebruik dan
 
 # Create Current error matrix and image counter
 current_error = []
@@ -54,12 +56,10 @@ for h in range(amount_height):
 
 current_error = np.array(current_error)
 image_count = np.array(image_count)
-# Read in the pixel pictures, resize, calculate mean and associate with correct spot
-k = 1
-im_num = 1
 
-while im_num <= max_im:
-    pixel_pic =  plt.imread(pixel_pics_dir + "Pixel_Im ("+ str(im_num) + ").jpg")
+# Read in the pixel pictures, resize, calculate mean and associate with correct spot
+for im_num in tqdm(range(1, MAX_IM+1)): #gebruik een for lus
+    pixel_pic =  plt.imread(pixel_pics_dir + "Pixel_Im ("+ str(im_num) + ").jpg")  #TODO: zie tweede tutorial van manu
 
     # Cut the image to correct ratio (square)
     height2, width2 = len(pixel_pic), len(pixel_pic[0])
@@ -93,9 +93,7 @@ while im_num <= max_im:
                 reconstructed[h*dim_pix:(h+1)*dim_pix, w*dim_pix:(w+1)*dim_pix] = pixel_pic
                 current_error[h][w] = error[h][w]
                 image_count[h][w] = im_num
-                k += 1
-    print(k, im_num)
-    im_num += 1
+
 
 # Quantise the used images, define not used and most used
 counter = []
@@ -103,23 +101,23 @@ x_axis = []
 zero_images = []
 max_images = []
 
-for i in range(1, max_im+1):
+for i in range(1, MAX_IM+1):
     x_axis.append(i)
     counter.append(np.count_nonzero(image_count == i))
     if np.count_nonzero(image_count == i) == 0:
         zero_images.append(i)
 
 for j in range(len(counter)):
-    if counter[j] >= 0.12 * max(counter):
+    if counter[j] >= MOST_USED_THRESHOLD * max(counter): 
         max_images.append(x_axis[j])
 
 print("Images that are not used = ", zero_images)
 print("Images that are used a lot = ", max_images)
-print("Total amount of different images = ", max_im - len(zero_images))
+print("Total amount of different images = ", MAX_IM - len(zero_images))
 
 # Save the new image and add indicator of total error
 tot_error = int(np.sum(current_error.flatten()))
-save_name = save_dir + file_name + "_collage_AmountOfImages_" + str(number_pixpics) + "DifferentImages_" + str(max_im - len(zero_images)) + "Total_Error_" + str(tot_error) + ".jpg"
+save_name = save_dir + file_name + "_collage_AmountOfImages_" + str(NUMBER_PIXPICS) + "DifferentImages_" + str(MAX_IM - len(zero_images)) + "Total_Error_" + str(tot_error) + ".jpg"
 plt.imsave(save_name,reconstructed)
 
 print("Total errror = ",tot_error)
