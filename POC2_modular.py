@@ -14,7 +14,7 @@ MOST_USED_THRESHOLD = 0.12 # Determines a treshold to show the most used images
 
 
 # Main function of the program
-def main(file_name, NUMBER_PIXPICS, MAX_IM, RESOLUTION_FACTOR, MOST_USED_THRESHOLD):
+def main():
 
     # Read in the main picture and get needed parameters
     parentdir = "D://DocumentenDschijf//3de bach//PicturestoCollage//"
@@ -38,7 +38,7 @@ def main(file_name, NUMBER_PIXPICS, MAX_IM, RESOLUTION_FACTOR, MOST_USED_THRESHO
     current_error = create_matrix(amount_height, amount_width, None)
 
     # Create image counter
-    image_count = current_error
+    image_count = create_matrix(amount_height, amount_width, None)
 
     # Read in the pixel pictures, resize, calculate error and associate with correct spot
     for im_num in tqdm(range(1, MAX_IM+1)):
@@ -190,6 +190,6 @@ def plot_matrix(data):
 
 # Activate when this is the main program, call the main function
 if __name__ == '__main__':
-    main(file_name, NUMBER_PIXPICS, MAX_IM, RESOLUTION_FACTOR, MOST_USED_THRESHOLD)
+    main()
 
 
