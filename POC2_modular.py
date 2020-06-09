@@ -6,10 +6,10 @@ import cv2
 from tqdm import tqdm
 
 # Define some constants 
-file_name = "FridaKahlo"  # Filename of the bigpicture
-NUMBER_PIXPICS = 2000     # Amount of small images that will be used to create the big picture
-MAX_IM = 643         # Maximum amount of images that will be iterated over to try and recreate the bigpicture
-RESOLUTION_FACTOR = 2     # The upscaling factor to increase the size of the final image 
+file_name = "Selfie"  # Filename of the bigpicture
+NUMBER_PIXPICS = 6000     # Amount of small images that will be used to create the big picture
+MAX_IM = 6592        # Maximum amount of images that will be iterated over to try and recreate the bigpicture
+RESOLUTION_FACTOR = 8     # The upscaling factor to increase the size of the final image 
 MOST_USED_THRESHOLD = 0.12 # Determines a treshold to show the most used images
 error_type = 'Mean'     # Choose the error type (Mean or Euclidian)
 
@@ -34,35 +34,50 @@ def main():
     # Create empty image for signal reconstruction
     reconstructed = create_matrix(amount_height * dim_pix, amount_width * dim_pix, [np.uint8(0), np.uint8(0), np.uint8(0)])
 
+    # Create empty image for signal reconstruction but with higher resolution
+    reconstructed_upscaled = create_matrix(amount_height * dim_pix*RESOLUTION_FACTOR, amount_width * dim_pix * RESOLUTION_FACTOR, [np.uint8(0), np.uint8(0), np.uint8(0)])
+
     # Create Current error matrix
     current_error = create_matrix(amount_height, amount_width, None)
 
     # Create image counter
     image_count = create_matrix(amount_height, amount_width, None)
 
+    # Create a matrix containing the mean values of the main picture (only used for the mean error)   TODO: zorgen dat dit enkel gedaan wordt als de mean error gebruikt zal worden
+    mean_main_picture = []
+    for h in range(height1):
+        list = []
+        for w in range(width1):
+            mean_rgb = np.sum(np.sum(mainpicture[h*dim_pix:(h+1)*dim_pix, w*dim_pix:(w+1)*dim_pix], axis = 0), axis = 0)/(dim_pix*dim_pix)
+            list.append(mean_rgb)
+        mean_main_picture.append(list)
+    mean_main_picture = np.array(mean_main_picture)
+
     # Read in the pixel pictures, resize, calculate error and associate with correct spot
     for im_num in tqdm(range(1, MAX_IM+1)):
 
         # Read in the small image 
-        pixel_pic = read_picture(pixel_pics_dir + "Pixel_Im ("+ str(im_num) + ").jpg")
+        pixel_pic_original = read_picture(pixel_pics_dir + "Pixel_Im ("+ str(im_num) + ").jpg")
 
         # Cut the image to correct ratio (square)
-        height2, width2 = len(pixel_pic), len(pixel_pic[0])
+        height2, width2 = len(pixel_pic_original), len(pixel_pic_original[0])
         if height2 >= width2:
             diff = height2-width2
-            pixel_pic = pixel_pic[diff//2:height2-diff//2,:]
+            pixel_pic_original = pixel_pic_original[diff//2:height2-diff//2,:]
         else:
             diff = width2-height2
-            pixel_pic = pixel_pic[:,diff//2:width2-diff//2]
-        
-        # Resize the image to dim_pix by dim_pix 
-        pixel_pic = resize(pixel_pic, dim_pix)
+            pixel_pic_original = pixel_pic_original[:,diff//2:width2-diff//2]
+        pixel_pic = pixel_pic_original
 
-        # Calculate error based on the sum of the euclidian distances between rgb values of the main picture and the "pixel_pic"
-        error = calculate_error_mean(mainpicture, pixel_pic, amount_height, amount_width, dim_pix)
+        # Resize the image to dim_pix by dim_pix
+        pixel_pic = resize(pixel_pic, dim_pix)
+        pixel_pic_upscaled = resize(pixel_pic_original, dim_pix* RESOLUTION_FACTOR)
+
+        # Calculate error (choose between mean or euclidian)
+        error = calculate_error_mean(mean_main_picture, pixel_pic, amount_height, amount_width, dim_pix)
 
         # Reconstruct the image, and update image counter and current error
-        reconstructed, current_error, image_count = reconstruct(amount_height, amount_width, error, current_error, dim_pix, reconstructed, image_count, pixel_pic, im_num)
+        reconstructed, current_error, image_count = reconstruct(amount_height, amount_width, error, current_error, dim_pix, reconstructed, image_count, pixel_pic, im_num, pixel_pic_upscaled, reconstructed_upscaled)
 
     # Quantise the images that are not used
     zero_images, counter, x_axis = create_zero_images(image_count)
@@ -78,9 +93,13 @@ def main():
     # Calculate the total error
     tot_error = int(np.sum(current_error.flatten()))
 
-    # Save the new image
+    # Save the new image with (almost) the same resoltion as the original
     save_name = save_dir + file_name + "_collage_AmountOfImages_" + str(NUMBER_PIXPICS) + "DifferentImages_" + str(MAX_IM - len(zero_images)) + "Total_Error_" + str(tot_error) + ".jpg"
     save(save_name, reconstructed)
+
+    # Save the new image with an upscaled resolution
+    save_name_upscaled = save_dir + file_name + "_collage_AmountOfImages_" + str(NUMBER_PIXPICS) + "DifferentImages_" + str(MAX_IM - len(zero_images)) + "Total_Error_" + str(tot_error) + "_upscaled" + ".jpg"
+    save(save_name_upscaled, reconstructed_upscaled)
 
     # Visualise the current error
     plot_matrix(current_error)
@@ -126,7 +145,7 @@ def calculate_error_mean(picture1, picture2, height, width, dim_pix):
     for h in range(height):
         error2 = []
         for w in range(width):
-            mean_rgb_picture1 = np.sum(np.sum(picture1[h*dim_pix:(h+1)*dim_pix, w*dim_pix:(w+1)*dim_pix], axis = 0), axis = 0)/(dim_pix*dim_pix)
+            mean_rgb_picture1 = picture1[h][w]
             mean_rgb_picture2 = np.sum(np.sum(picture2, axis = 0), axis = 0)/(dim_pix*dim_pix)
             error_value = np.abs(np.sum(mean_rgb_picture1) - np.sum(mean_rgb_picture2))
             error2.append(error_value)
@@ -156,11 +175,12 @@ def size_pixel_pic(height, width):
 
 
 # Function that reconstructs the image
-def reconstruct(height, width, error, current_error, dim_pix, reconstructed, image_count, pixel_pic, im_num):
+def reconstruct(height, width, error, current_error, dim_pix, reconstructed, image_count, pixel_pic, im_num, pixel_pic_upscaled, reconstructed_upscaled):
     for h in range(height):
         for w in range(width):
             if current_error[h][w] == None or error[h][w] < current_error[h][w]:
                 reconstructed[h*dim_pix:(h+1)*dim_pix, w*dim_pix:(w+1)*dim_pix] = pixel_pic
+                reconstructed_upscaled[h*dim_pix*RESOLUTION_FACTOR:(h+1)*dim_pix*RESOLUTION_FACTOR, w*dim_pix*RESOLUTION_FACTOR:(w+1)*dim_pix*RESOLUTION_FACTOR] = pixel_pic_upscaled
                 current_error[h][w] = error[h][w]
                 image_count[h][w] = im_num
 
@@ -201,7 +221,6 @@ def plot_matrix(data):
     plt.figure()
     plt.imshow(np.array(data, dtype=float))
     plt.colorbar()
-
 
 
 # Function to visualise normal data in a 1d list
