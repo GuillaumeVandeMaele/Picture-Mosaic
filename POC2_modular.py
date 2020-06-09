@@ -85,6 +85,8 @@ def main():
     # Visualise the current error
     plot_matrix(current_error)
 
+    # Visualise the amount of times each image is used
+    plot(counter, x_axis)
 
 # Function that will read in the correct picture from the correct location
 def read_picture(dir):
@@ -185,6 +187,13 @@ def plot_matrix(data):
     plt.figure()
     plt.imshow(np.array(data, dtype=float))
     plt.colorbar()
+
+
+
+# Function to visualise normal data in a 1d list
+def plot(y_data, x_data):
+    plt.figure()
+    plt.plot(x_data, y_data, 'o')
     plt.show()
 
 
