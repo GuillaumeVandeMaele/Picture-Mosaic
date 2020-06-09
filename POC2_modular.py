@@ -6,12 +6,12 @@ import cv2
 from tqdm import tqdm
 
 # Define some constants 
-file_name = "DemonSlayer"  # Filename of the bigpicture
+file_name = "FridaKahlo"  # Filename of the bigpicture
 NUMBER_PIXPICS = 2000     # Amount of small images that will be used to create the big picture
-MAX_IM = 10            # Maximum amount of images that will be iterated over to try and recreate the bigpicture
+MAX_IM = 643         # Maximum amount of images that will be iterated over to try and recreate the bigpicture
 RESOLUTION_FACTOR = 2     # The upscaling factor to increase the size of the final image 
 MOST_USED_THRESHOLD = 0.12 # Determines a treshold to show the most used images
-
+error_type = 'Mean'     # Choose the error type (Mean or Euclidian)
 
 # Main function of the program
 def main():
@@ -59,7 +59,7 @@ def main():
         pixel_pic = resize(pixel_pic, dim_pix)
 
         # Calculate error based on the sum of the euclidian distances between rgb values of the main picture and the "pixel_pic"
-        error = calculate_error(mainpicture, pixel_pic, amount_height, amount_width, dim_pix)
+        error = calculate_error_mean(mainpicture, pixel_pic, amount_height, amount_width, dim_pix)
 
         # Reconstruct the image, and update image counter and current error
         reconstructed, current_error, image_count = reconstruct(amount_height, amount_width, error, current_error, dim_pix, reconstructed, image_count, pixel_pic, im_num)
@@ -106,7 +106,7 @@ def crop(picture, height, width, amount_height, amount_width, dim_pix):
 
 
 # Function that will calculate the error: (sum of the euclidian distances between rgb values of the main picture and the "pixel_pic")
-def calculate_error(picture1, picture2, height, width, dim_pix):
+def calculate_error_euclidian(picture1, picture2, height, width, dim_pix):
     error = []
     for h in range(height):
         error2 = []
@@ -116,6 +116,20 @@ def calculate_error(picture1, picture2, height, width, dim_pix):
             for pain in pixel_diff:
                 error1.append(np.sum(np.sqrt(np.sum(np.array(pain**2), axis = 1))))
             error2.append(np.sum(error1))
+        error.append(error2)
+    return np.array(error)
+
+
+# Function that will calculate the error: (sum of the euclidian distances between rgb values of the main picture and the "pixel_pic")
+def calculate_error_mean(picture1, picture2, height, width, dim_pix):
+    error = []
+    for h in range(height):
+        error2 = []
+        for w in range(width):
+            mean_rgb_picture1 = np.sum(np.sum(picture1[h*dim_pix:(h+1)*dim_pix, w*dim_pix:(w+1)*dim_pix], axis = 0), axis = 0)/(dim_pix*dim_pix)
+            mean_rgb_picture2 = np.sum(np.sum(picture2, axis = 0), axis = 0)/(dim_pix*dim_pix)
+            error_value = np.abs(np.sum(mean_rgb_picture1) - np.sum(mean_rgb_picture2))
+            error2.append(error_value)
         error.append(error2)
     return np.array(error)
 
