@@ -4,18 +4,22 @@ import matplotlib.pyplot as plt
 import PIL
 import cv2
 from tqdm import tqdm
+from colormath.color_objects import sRGBColor, LabColor
+from colormath.color_conversions import convert_color
+from colormath.color_diff import delta_e_cie2000
 
 # Define some constants 
-file_name = "Ghibli"  # Filename of the bigpicture
-NUMBER_PIXPICS = 2000     # Amount of small images that will be used to create the big picture
-MAX_IM = 6000       # Maximum amount of images that will be iterated over to try and recreate the bigpicture
+file_name = "Boom"  # Filename of the bigpicture
+NUMBER_PIXPICS = 33000     # Amount of small images that will be used to create the big picture
+MAX_IM = 150      # Maximum amount of images that will be iterated over to try and recreate the bigpicture
 MOST_USED_THRESHOLD = 0.12 # Determines a treshold to show the most used images
-error_type = 'Mean'     # Choose the error type (Mean or Euclidian)     TODO: dit ook expliciet gaan gebruiken in de code
+error_type = 'Mean'     # Choose the error type (Mean, Euclidian, CIE2000)     TODO: Use this to select wich error function is used
+PIXEL_SKIP = 3  # Tells in how many pieces we divide dim pix, to speed up the CIE2000 error calculation
 
 # Main function of the program
 def main():
 
-    # Read in the main picture and get needed parameters
+    # Read in the main picture and get needed parameters                      TODO: dont work with fixed pathways
     parentdir = "D://DocumentenDschijf//3de bach//PicturestoCollage//"
     main_pic_dir = parentdir + "BigPictures//" + file_name + ".jpg"
     pixel_pics_dir = parentdir + "PixelPictures5//"
@@ -26,9 +30,12 @@ def main():
 
     # Determine size of pixel pictures
     dim_pix, amount_height, amount_width = size_pixel_pic(height1, width1)
-    
+
+    # Determine a precision factor that will say for which pixels the CIE2000 is evaluated
+    PRECISION_FACTOR = int(dim_pix/PIXEL_SKIP)
+
     # Crop the main picture to fit perfect squares of dim_pix init
-    main_pic_dir = crop(mainpicture, height1, width1, amount_height, amount_width, dim_pix)
+    mainpicture = crop(mainpicture, height1, width1, amount_height, amount_width, dim_pix)
 
     # Create empty image for signal reconstruction
     reconstructed = create_matrix(amount_height * dim_pix, amount_width * dim_pix, [np.uint8(0), np.uint8(0), np.uint8(0)])
@@ -39,16 +46,15 @@ def main():
     # Create image counter
     image_count = create_matrix(amount_height, amount_width, None)
 
-    # Create a matrix containing the mean values of the main picture (only used for the mean error)   TODO: zorgen dat dit enkel gedaan wordt als de mean error gebruikt zal worden
-    '''
-    mean_main_picture = []
+    # Create a matrix containing the mean values of the main picture (only used for the mean error)   TODO: Only do this when the error is "mean"
+    ''' mean_main_picture = []
     for h in range(height1):
         list = []
         for w in range(width1):
             mean_rgb = np.sum(np.sum(mainpicture[h*dim_pix:(h+1)*dim_pix, w*dim_pix:(w+1)*dim_pix], axis = 0), axis = 0)/(dim_pix*dim_pix)
             list.append(mean_rgb)
         mean_main_picture.append(list)
-    mean_main_picture = np.array(mean_main_picture)'''
+    mean_main_picture = np.array(mean_main_picture) '''
 
     # Read in the pixel pictures, resize, calculate error and associate with correct spot
     for im_num in tqdm(range(1, MAX_IM+1)):
@@ -68,10 +74,11 @@ def main():
         # Resize the image to dim_pix by dim_pix
         pixel_pic = resize(pixel_pic, dim_pix)
 
-        # Calculate error (choose between mean or euclidian)
+        # Calculate error (choose between mean or euclidian)                                                TODO: Make this cleaner such that it fits for every error function
         #error = calculate_error_mean(mean_main_picture, pixel_pic, amount_height, amount_width, dim_pix)
-        error = calculate_error_euclidian(mainpicture, pixel_pic, amount_height, amount_width, dim_pix)
+        #error = calculate_error_euclidian(mainpicture, pixel_pic, amount_height, amount_width, dim_pix)
         #error = calculate_error_perception(amount_height, amount_width, pixel_pic, mainpicture, dim_pix)
+        error = calculate_error_cie2000(amount_height, amount_width, pixel_pic, mainpicture, dim_pix, PRECISION_FACTOR)
 
         # Reconstruct the image, and update image counter and current error
         reconstructed, current_error, image_count = reconstruct(amount_height, amount_width, error, current_error, dim_pix, reconstructed, image_count, pixel_pic, im_num)
@@ -94,14 +101,21 @@ def main():
     save_name = save_dir + file_name + "_collage_AmountOfImages_" + str(NUMBER_PIXPICS) + "DifferentImages_" + str(MAX_IM - len(zero_images)) + "Total_Error_" + str(tot_error) + ".jpg"
     save(save_name, reconstructed)
 
-    # Save the data of image_count so that later on a picture with higher resoltution could be made
-
+    # Save the data of image_count so that later on a picture with higher resoltution could be made   TODO: Write a small script that can create this high res image
+    np.savetxt(file_name + ".csv", image_count, delimiter=",")
 
     # Visualise the current error
     plot_matrix(current_error)
 
     # Visualise the amount of times each image is used
     plot(counter, x_axis)
+
+# TODO: Clean up the description of functions and specify the meaning of used arguments as folows using a docstring:
+    """[summary]
+
+    Returns:
+        [type]: [description]
+    """
 
 # Function that will read in the correct picture from the correct location
 def read_picture(dir):
@@ -146,8 +160,9 @@ def calculate_error_mean(picture1, picture2, height, width, dim_pix):
             error_value = np.abs(np.sum(mean_rgb_picture1) - np.sum(mean_rgb_picture2))
             error2.append(error_value)
         error.append(error2)
-    return np.array(error)
+    return np.array(np.float16(error))
 
+# Function that will calculate the error based on the square root formula (ref: wikipedia Color Differences)
 def calculate_error_perception(height, width, pixel_pic, mainpicture, dim_pix):
     error = []
     for h in range(height):
@@ -163,6 +178,28 @@ def calculate_error_perception(height, width, pixel_pic, mainpicture, dim_pix):
                     error1.append(np.sqrt((2+r/256)*dR**2 + 4*dG**2 + (2+(256-r)/r)*dB**2 ))
             error2.append(np.sum(error1))
         error.append(error2)
+    return np.array(error)
+
+# Function that will calculate the error based on the CIE2000 measure
+def calculate_error_cie2000(height, width, pixel_pic, mainpicture, dim_pix, PRECISION_FACTOR):
+    error = []
+    for h in range(height):
+        error1 = []
+        for w in range(width):
+            main = mainpicture[h*dim_pix:(h+1)*dim_pix, w*dim_pix:(w+1)*dim_pix]
+            error2 = []
+            for i in range(len(main)//PRECISION_FACTOR):
+                error3 = []
+                for j in range(len(main[0])//PRECISION_FACTOR):
+                    rgb1 = sRGBColor(main[PRECISION_FACTOR*i][PRECISION_FACTOR*j][0], main[PRECISION_FACTOR*i][PRECISION_FACTOR*j][1], main[PRECISION_FACTOR*i][PRECISION_FACTOR*j][2])
+                    rgb2 = sRGBColor(pixel_pic[PRECISION_FACTOR*i][PRECISION_FACTOR*j][0], pixel_pic[PRECISION_FACTOR*i][PRECISION_FACTOR*j][1], pixel_pic[PRECISION_FACTOR*i][PRECISION_FACTOR*j][2])
+                    lab1 = convert_color(rgb1, LabColor)
+                    lab2 = convert_color(rgb2, LabColor)
+                    delta_e = delta_e_cie2000(lab1, lab2)
+                    error3.append(delta_e)
+                error2.append(sum(error3))
+            error1.append(sum(error2))
+        error.append(error1)
     return np.array(error)
 
 
@@ -181,7 +218,7 @@ def create_matrix(height, width, values):
 
 # Function that determines size of pixel pics
 def size_pixel_pic(height, width):
-    dim_pix = int(np.sqrt((height*width)/NUMBER_PIXPICS))
+    dim_pix = int(round(np.sqrt((height*width)/NUMBER_PIXPICS)))
     amount_height = height//dim_pix
     amount_width = width//dim_pix
     return dim_pix, amount_height, amount_width
@@ -225,7 +262,7 @@ def create_max_images(counter, x_axis):
 
 # Function to save the results
 def save(dir, data):
-    plt.imsave(dir,data)
+    plt.imsave(dir, data)
 
 
 # Function to visualise matrix data
